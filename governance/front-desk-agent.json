@@ -1,0 +1,43 @@
+{
+  "agent": "front-desk-agent",
+  "displayName": "Front Desk Agent (Riverside Downtown)",
+  "purpose": "Answers patients' scheduling questions for one clinic: finds the patient, reads and reschedules or cancels appointments, tells them their balance.",
+  "regulations": {
+    "HIPAA minimum necessary (45 CFR 164.502(b))": "Reads identity and contact fields only. No SSN, insurance ID, diagnosis or clinical notes.",
+    "Row scope": "Only Riverside Downtown (clinicId 1). Other clinics' patients are not in its result set.",
+    "PCI DSS Req 7 (need to know)": "Sees the balance on the billing account; never sees card data. paymentMethods is not granted at all."
+  },
+  "policy": {
+    "access": "rules",
+    "entitlements": ["ai:mcp", "dataModel:read"],
+    "itemRules": {
+      "clinics": { "read": {} },
+      "providers": { "read": {} },
+      "patients": { "read": { "filter": { "clinicId": { "_eq": 1 } } } },
+      "appointments": {
+        "read": { "filter": { "clinicId": { "_eq": 1 } } },
+        "update": { "filter": { "clinicId": { "_eq": 1 } } }
+      },
+      "billingAccounts": { "read": { "filter": { "clinicId": { "_eq": 1 } } } }
+    },
+    "fieldRules": {
+      "clinics": { "read": "*" },
+      "providers": { "read": "*" },
+      "patients": {
+        "read": { "id": {}, "mrn": {}, "firstName": {}, "lastName": {}, "dateOfBirth": {}, "phone": {}, "clinicId": {} }
+      },
+      "appointments": {
+        "read": "*",
+        "update": { "status": {}, "startsAt": {} }
+      },
+      "billingAccounts": {
+        "read": { "id": {}, "ehrPatientId": {}, "clinicId": {}, "balanceDue": {}, "status": {} }
+      }
+    },
+    "validationRules": {
+      "appointments": [
+        { "filter": { "status": { "_in": ["scheduled", "confirmed", "checked_in", "cancelled"] } } }
+      ]
+    }
+  }
+}

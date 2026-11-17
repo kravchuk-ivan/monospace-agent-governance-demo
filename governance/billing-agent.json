@@ -1,0 +1,43 @@
+{
+  "agent": "billing-agent",
+  "displayName": "Billing Support Agent",
+  "purpose": "Resolves billing questions across all clinics: explains charges, links them to the visit, files refunds up to $200.",
+  "regulations": {
+    "PCI DSS Req 3.4 (mask PAN when displayed)": "Sees card brand and last 4 only. cardNumber and expiry are not granted, so they never leave the database for this agent or its LLM.",
+    "PCI DSS Req 7 (need to know)": "Read-only on billing data; the one write is creating a refund, capped by a validation rule.",
+    "HIPAA minimum necessary": "Reads who the patient is and when the visit was. No SSN, diagnosis, clinical notes, or visit reason.",
+    "Separation of duties": "Refunds over $200 are refused by the API and need a human."
+  },
+  "policy": {
+    "access": "rules",
+    "entitlements": ["ai:mcp", "dataModel:read"],
+    "itemRules": {
+      "billingAccounts": { "read": {} },
+      "charges": { "read": {} },
+      "refunds": { "read": {}, "create": {} },
+      "paymentMethods": { "read": {} },
+      "patients": { "read": {} },
+      "appointments": { "read": {} }
+    },
+    "fieldRules": {
+      "billingAccounts": { "read": "*" },
+      "charges": { "read": "*" },
+      "refunds": {
+        "read": "*",
+        "create": { "chargeId": {}, "amount": {}, "reason": {}, "requestedBy": {} }
+      },
+      "paymentMethods": {
+        "read": { "id": {}, "accountId": {}, "cardBrand": {}, "cardLast4": {}, "isDefault": {} }
+      },
+      "patients": {
+        "read": { "id": {}, "mrn": {}, "firstName": {}, "lastName": {}, "email": {}, "phone": {}, "insuranceMemberId": {} }
+      },
+      "appointments": {
+        "read": { "id": {}, "patientId": {}, "clinicId": {}, "startsAt": {}, "status": {} }
+      }
+    },
+    "validationRules": {
+      "refunds": [{ "filter": { "amount": { "_lte": 200 } } }]
+    }
+  }
+}
