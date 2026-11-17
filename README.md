@@ -20,6 +20,10 @@ Monospace puts one governed API in front of both databases. The API comes as RES
         appointments                              charges, refunds
 ```
 
+![Architecture: two agents and an app call Monospace, which governs live access to the EHR Postgres and Payments MySQL](docs/architecture.png)
+
+Source: [docs/architecture.drawio](docs/architecture.drawio) (open in diagrams.net). Circled numbers match the demo beats.
+
 ## Run it
 
 Needs Docker (Colima works) and Node 22+.
@@ -69,6 +73,7 @@ scripts/                  setup, demo, policy check, SDK generation
 app/patient-360.ts        typed SDK example
 DEMO.md                   run-of-show and talk track
 docs/STUDY-GUIDE.md       how Monospace works, verified hands-on, and product feedback
+docs/architecture.*       diagrams.net source + PNG of the demo architecture
 ```
 
 All data is synthetic. Card numbers are public test PANs.
