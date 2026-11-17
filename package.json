@@ -1,0 +1,30 @@
+{
+  "name": "monospace-agent-governance-demo",
+  "private": true,
+  "type": "module",
+  "description": "Riverside Health: governed AI agent access to a HIPAA EHR (Postgres) and a PCI payments system (MySQL) through Monospace",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "up": "docker compose up -d --wait --wait-timeout 300",
+    "down": "docker compose down",
+    "reset": "docker compose down -v && npm run up && npm run setup",
+    "typecheck": "tsc -p .",
+    "setup": "node scripts/setup.mjs",
+    "policies:check": "node scripts/check-policies.mjs",
+    "demo": "node scripts/demo.mjs",
+    "demo:fast": "node scripts/demo.mjs --no-pause",
+    "sdk:generate": "node scripts/sdk-generate.mjs",
+    "app": "tsx app/patient-360.ts"
+  },
+  "dependencies": {
+    "@monospace/sdk": "1.0.0"
+  },
+  "devDependencies": {
+    "@monospace/cli": "0.2.1",
+    "@types/node": "^22.10.2",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2"
+  }
+}
