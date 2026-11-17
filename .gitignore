@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.local
+license.env
+.state.json
+.mcp.json
+app/generated/
+*.log
+app/openapi.json

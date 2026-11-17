@@ -1,0 +1,180 @@
+# Riverside Health demo: Monospace v1.1.0 in front of two systems of record
+#
+#   ehr-postgres      Electronic health records (HIPAA): clinics, patients, appointments
+#   payments-mysql    Card payments / billing (PCI DSS cardholder data environment)
+#
+# Monospace's own stack (system Postgres, RabbitMQ, Redis, key generator) follows the
+# official quickstart: https://github.com/directus/monospace-starter
+#
+#   docker compose up -d --wait        then   npm run setup
+
+name: riverside
+
+services:
+  # ---------------------------------------------------------------------------
+  # Systems of record (what the customer already runs)
+  # ---------------------------------------------------------------------------
+  ehr-postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ehr_admin
+      POSTGRES_PASSWORD: ehr_admin
+      POSTGRES_DB: ehr
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./db/ehr:/docker-entrypoint-initdb.d:ro
+      - ehr_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ehr_admin -d ehr"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [riverside]
+
+  payments-mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: payments_root
+      MYSQL_DATABASE: payments
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./db/payments:/docker-entrypoint-initdb.d:ro
+      - payments_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppayments_root"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks: [riverside]
+
+  # ---------------------------------------------------------------------------
+  # Monospace (official quickstart services)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    command: postgres -c 'max_connections=200'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: monospace
+      POSTGRES_DB: monospace
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: --auth-host=md5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d monospace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [riverside]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: monospace
+      RABBITMQ_DEFAULT_PASS: monospace
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [riverside]
+
+  redis:
+    image: redis:8.2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+    networks: [riverside]
+
+  keygen:
+    image: alpine:3.21
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /keys
+        if ! [ -f /keys/jwt_private.pem ] || ! [ -f /keys/jwt_public.pem ] || ! [ -f /keys/kms_master.key ]; then
+          apk add --no-cache openssl > /dev/null
+          openssl genpkey -algorithm ED25519 -out /keys/jwt_private.pem
+          openssl pkey -in /keys/jwt_private.pem -pubout -out /keys/jwt_public.pem
+          openssl rand -base64 32 | tr -d '\n' > /keys/kms_master.key
+          echo "Keys generated."
+        fi
+        chown 65532:65532 /keys/jwt_private.pem /keys/jwt_public.pem /keys/kms_master.key
+        chmod 600 /keys/jwt_private.pem /keys/jwt_public.pem /keys/kms_master.key
+    volumes:
+      - keys_data:/keys
+
+  monospace:
+    image: monospace/monospace:v1.1.0
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keygen: { condition: service_completed_successfully }
+      ehr-postgres: { condition: service_healthy }
+      payments-mysql: { condition: service_healthy }
+    ports:
+      - "8100:8100"
+    volumes:
+      - keys_data:/keys:ro
+      - uploads_data:/monospace/uploads
+      - extensions_data:/monospace/extensions
+    env_file:
+      - path: ./license.env
+        required: false
+    environment:
+      MONOSPACE_HOST: "0.0.0.0"
+      MONOSPACE_PORT: "8100"
+      MONOSPACE_BASE_URL: "http://localhost:8100"
+      # License: set MONOSPACE_LICENSE__KEY in license.env (never an empty value). Without it the
+      # instance runs on Starter: no custom roles, policies or service accounts.
+      MONOSPACE_SYSTEM_DATABASE__PROVIDER: "postgres"
+      MONOSPACE_SYSTEM_DATABASE__HOST: "postgres"
+      MONOSPACE_SYSTEM_DATABASE__PORT: "5432"
+      MONOSPACE_SYSTEM_DATABASE__USER: "postgres"
+      MONOSPACE_SYSTEM_DATABASE__PASSWORD: "monospace"
+      MONOSPACE_SYSTEM_DATABASE__DBNAME: "monospace"
+      MONOSPACE_SYSTEM_FILE_STORAGE__PROVIDER: "local"
+      MONOSPACE_SYSTEM_FILE_STORAGE__SHARED: "true"
+      MONOSPACE_SYSTEM_FILE_STORAGE__ROOT_PATH: "/monospace/uploads"
+      MONOSPACE_REDIS__URL: "redis://redis:6379"
+      MONOSPACE_RABBITMQ__HOST: "rabbitmq"
+      MONOSPACE_RABBITMQ__PORT: "5672"
+      MONOSPACE_RABBITMQ__USER: "monospace"
+      MONOSPACE_RABBITMQ__PASSWORD: "monospace"
+      MONOSPACE_RABBITMQ__VHOST: "/"
+      MONOSPACE_JWT_PRIVATE_KEY__FILE: "/keys/jwt_private.pem"
+      MONOSPACE_JWT_PUBLIC_KEY__FILE: "/keys/jwt_public.pem"
+      MONOSPACE_KMS__TYPE: "monospace"
+      MONOSPACE_KMS__MASTER_KEY__FILE: "/keys/kms_master.key"
+      MONOSPACE_ACCESS_TOKEN_TTL: "15m"
+      MONOSPACE_REFRESH_TOKEN_TTL: "7days"
+      MONOSPACE_COOKIE_SECURE: "false"
+    networks: [riverside]
+
+volumes:
+  ehr_data:
+  payments_data:
+  postgres_data:
+  rabbitmq_data:
+  keys_data:
+  uploads_data:
+  extensions_data:
+
+networks:
+  riverside:
