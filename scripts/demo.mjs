@@ -152,6 +152,8 @@ await pause()
 beat(5, 'Revoke in one place')
 say('Every agent key is scoped to one identity and expires. Turning it off takes effect on the next call.')
 const me = (await request('/system/users/me?fields=id', { token })).data
+const stale = (await request('/system/api-keys?fields=id,name', { token })).data.filter((k) => k.name === 'agent-to-revoke')
+for (const k of stale) await request(`/system/api-keys/${k.id}`, { method: 'DELETE', token })
 const tmp = await request('/system/api-keys', { method: 'POST', token, body: { name: 'agent-to-revoke', ttl: '1h', userId: me.id } })
 call('agent key: list_items appointments')
 r = await mcp(tmp.data.key, 'list_items', { collection: 'appointments', fields: ['id', 'status'], limit: 1 })
@@ -160,6 +162,7 @@ call('PATCH /system/api-keys/:id  { active: false }')
 await request(`/system/api-keys/${tmp.data.id}`, { method: 'PATCH', token, body: { active: false } })
 call('agent key: same call again')
 show(await mcp(tmp.data.key, 'list_items', { collection: 'appointments', fields: ['id', 'status'], limit: 1 }))
+await request(`/system/api-keys/${tmp.data.id}`, { method: 'DELETE', token })
 await pause()
 
 // ─────────────────────────────────────────────────────────────────────────────
